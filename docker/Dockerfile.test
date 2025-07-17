@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt requirements-test.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-test.txt
+
+COPY . .
+
+ENV PYTHONPATH=/app
+
+CMD ["pytest", "-n", "8", "-v", "--cov=services", "--cov-report=term-missing"]

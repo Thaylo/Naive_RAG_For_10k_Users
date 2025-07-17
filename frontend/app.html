@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naive RAG System - 10k Users</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="number"],
+        input[type="file"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="number"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tasks-list {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .task-item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .task-item .task-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .task-item .task-status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .task-status.UPLOAD_PENDING { background-color: #ffc107; color: #000; }
+        .task-status.UPLOAD_COMPLETED { background-color: #17a2b8; color: #fff; }
+        .task-status.CHUNKING { background-color: #6c757d; color: #fff; }
+        .task-status.CHUNKED { background-color: #20c997; color: #fff; }
+        .task-status.EMBEDDING { background-color: #e83e8c; color: #fff; }
+        .task-status.EMBEDDED { background-color: #6f42c1; color: #fff; }
+        .task-status.VECTORIZED { background-color: #28a745; color: #fff; }
+        .task-status.FAILED { background-color: #dc3545; color: #fff; }
+
+        .response-content {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .chunks-display {
+            margin-top: 15px;
+        }
+
+        .chunk-item {
+            background-color: #e9ecef;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Naive RAG System for 10k Users</h1>
+            <p>Upload PDFs, Configure Chunking, and Query Your Documents</p>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-content">
+            <!-- Configuration Card -->
+            <div class="card">
+                <h2>📋 Chunking Configuration</h2>
+                <form id="configForm">
+                    <div class="form-group">
+                        <label for="chunkSize">Chunk Size:</label>
+                        <input type="number" id="chunkSize" min="100" value="1000" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="overlapPercentage">Overlap Percentage (0-1):</label>
+                        <input type="number" id="overlapPercentage" min="0" max="1" step="0.1" value="0.1" required>
+                    </div>
+                    <button type="submit">Update Configuration</button>
+                </form>
+                <div id="configStatus" class="status"></div>
+            </div>
+
+            <!-- Upload Card -->
+            <div class="card">
+                <h2>📤 Upload PDF Files</h2>
+                <form id="uploadForm">
+                    <div class="form-group">
+                        <label for="pdfFiles">Select PDF files:</label>
+                        <input type="file" id="pdfFiles" accept=".pdf" multiple required>
+                    </div>
+                    <button type="submit">Upload Files</button>
+                </form>
+                <div class="loading" id="uploadLoading">
+                    <div class="spinner"></div>
+                    <p>Uploading files...</p>
+                </div>
+                <div id="uploadStatus" class="status"></div>
+            </div>
+
+            <!-- Query Card -->
+            <div class="card full-width">
+                <h2>🔍 Query Your Documents</h2>
+                <form id="queryForm">
+                    <div class="form-group">
+                        <label for="queryText">Enter your question:</label>
+                        <textarea id="queryText" placeholder="What would you like to know about your documents?" required></textarea>
+                    </div>
+                    <button type="submit">Submit Query</button>
+                </form>
+                <div class="loading" id="queryLoading">
+                    <div class="spinner"></div>
+                    <p>Processing query...</p>
+                </div>
+                <div id="queryStatus" class="status"></div>
+                <div id="queryResponse" class="response-content" style="display: none;"></div>
+                <div id="queryChunks" class="chunks-display"></div>
+            </div>
+
+            <!-- Tasks Monitor -->
+            <div class="card full-width">
+                <h2>📊 Task Monitor</h2>
+                <button onclick="refreshTasks()">Refresh Tasks</button>
+                <div class="tasks-list" id="tasksList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+
+        // Configuration Form
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const chunkSize = parseInt(document.getElementById('chunkSize').value);
+            const overlapPercentage = parseFloat(document.getElementById('overlapPercentage').value);
+            
+            try {
+                const response = await fetch(`${API_BASE}/chunk-config/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chunk_size: chunkSize,
+                        overlap_percentage: overlapPercentage
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('configStatus', 'Configuration updated successfully!', 'success');
+                } else {
+                    showStatus('configStatus', `Error: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                showStatus('configStatus', `Error: ${error.message}`, 'error');
+            }
+        });
+
+        // Upload Form
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('pdfFiles');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showStatus('uploadStatus', 'Please select at least one PDF file', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('files', file);
+            }
+            
+            document.getElementById('uploadLoading').style.display = 'block';
+            document.getElementById('uploadStatus').style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE}/upload/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const successCount = data.results.filter(r => r.status === 'success').length;
+                    const message = `Uploaded ${successCount} of ${data.results.length} files successfully`;
+                    showStatus('uploadStatus', message, successCount > 0 ? 'success' : 'error');
+                    
+                    // Show task IDs
+                    const taskIds = data.results
+                        .filter(r => r.status === 'success')
+                        .map(r => r.task_id)
+                        .join(', ');
+                    if (taskIds) {
+                        showStatus('uploadStatus', `Task IDs: ${taskIds}`, 'info');
+                    }
+                    
+                    // Refresh tasks list
+                    setTimeout(refreshTasks, 1000);
+                } else {
+                    showStatus('uploadStatus', `Error: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                showStatus('uploadStatus', `Error: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('uploadLoading').style.display = 'none';
+                fileInput.value = '';
+            }
+        });
+
+        // Query Form
+        document.getElementById('queryForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const queryText = document.getElementById('queryText').value.trim();
+            
+            if (!queryText) {
+                showStatus('queryStatus', 'Please enter a question', 'error');
+                return;
+            }
+            
+            document.getElementById('queryLoading').style.display = 'block';
+            document.getElementById('queryStatus').style.display = 'none';
+            document.getElementById('queryResponse').style.display = 'none';
+            document.getElementById('queryChunks').innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/rag/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: queryText })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('queryStatus', 'Query processed successfully!', 'success');
+                    
+                    // Show response
+                    document.getElementById('queryResponse').style.display = 'block';
+                    document.getElementById('queryResponse').textContent = data.response;
+                    
+                    // Show relevant chunks
+                    if (data.chunks && data.chunks.length > 0) {
+                        const chunksHtml = data.chunks.map((chunk, index) => `
+                            <div class="chunk-item">
+                                <strong>Chunk ${index + 1}:</strong> ${chunk.content.substring(0, 200)}...
+                                <br><small>Score: ${chunk.score.toFixed(4)}</small>
+                            </div>
+                        `).join('');
+                        document.getElementById('queryChunks').innerHTML = `
+                            <h3>Relevant Chunks Found:</h3>
+                            ${chunksHtml}
+                        `;
+                    }
+                } else {
+                    showStatus('queryStatus', `Error: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                showStatus('queryStatus', `Error: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('queryLoading').style.display = 'none';
+            }
+        });
+
+        // Refresh Tasks
+        async function refreshTasks() {
+            try {
+                const response = await fetch(`${API_BASE}/master-task/tasks/`);
+                const tasks = await response.json();
+                
+                if (tasks.length === 0) {
+                    document.getElementById('tasksList').innerHTML = '<p>No tasks found</p>';
+                    return;
+                }
+                
+                const tasksHtml = tasks.map(task => `
+                    <div class="task-item">
+                        <div class="task-id">${task.id}</div>
+                        <strong>${task.filename}</strong>
+                        <span class="task-status ${task.status}">${task.status}</span>
+                        <br>
+                        <small>Created: ${new Date(task.created_at).toLocaleString()}</small>
+                    </div>
+                `).join('');
+                
+                document.getElementById('tasksList').innerHTML = tasksHtml;
+            } catch (error) {
+                document.getElementById('tasksList').innerHTML = `<p class="error">Error loading tasks: ${error.message}</p>`;
+            }
+        }
+
+        // Utility function to show status
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+            element.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    element.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Load initial configuration
+        async function loadConfiguration() {
+            try {
+                const response = await fetch(`${API_BASE}/chunk-config/config`);
+                const data = await response.json();
+                
+                document.getElementById('chunkSize').value = data.chunk_size;
+                document.getElementById('overlapPercentage').value = data.overlap_percentage;
+            } catch (error) {
+                console.error('Error loading configuration:', error);
+            }
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            loadConfiguration();
+            refreshTasks();
+            
+            // Auto-refresh tasks every 5 seconds
+            setInterval(refreshTasks, 5000);
+        });
+    </script>
+</body>
+</html>

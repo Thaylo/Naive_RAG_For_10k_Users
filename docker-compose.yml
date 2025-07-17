@@ -1,0 +1,224 @@
+version: '3.8'
+
+services:
+  master-task-db:
+    build:
+      context: .
+      dockerfile: services/master_task_db/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  chunk-config:
+    build:
+      context: .
+      dockerfile: services/chunk_config/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  upload:
+    build:
+      context: .
+      dockerfile: services/upload/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./storage/uploads:/app/storage/uploads
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  chunking-1:
+    build:
+      context: .
+      dockerfile: services/chunking/Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - CHUNK_CONFIG_URL=http://chunk-config:8002
+      - UPLOAD_SERVICE_URL=http://upload:8003
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+      - ./storage/uploads:/app/storage/uploads
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+      - chunk-config
+      - upload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  chunking-2:
+    build:
+      context: .
+      dockerfile: services/chunking/Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - CHUNK_CONFIG_URL=http://chunk-config:8002
+      - UPLOAD_SERVICE_URL=http://upload:8003
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+      - ./storage/uploads:/app/storage/uploads
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+      - chunk-config
+      - upload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  embedding-1:
+    build:
+      context: .
+      dockerfile: services/embedding/Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - CHUNKING_SERVICE_URLS=http://chunking-1:8004,http://chunking-2:8004
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+      - chunking-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  embedding-2:
+    build:
+      context: .
+      dockerfile: services/embedding/Dockerfile
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - CHUNKING_SERVICE_URLS=http://chunking-1:8004,http://chunking-2:8004
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+      - chunking-2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  vectorial-db:
+    build:
+      context: .
+      dockerfile: services/vectorial_db/Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MASTER_TASK_DB_URL=http://master-task-db:8001
+      - EMBEDDING_SERVICE_URLS=http://embedding-1:8005,http://embedding-2:8005
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - master-task-db
+      - embedding-1
+      - embedding-2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rag-query:
+    build:
+      context: .
+      dockerfile: services/rag_query/Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - VECTORIAL_DB_URLS=http://vectorial-db:8006
+      - CHUNKING_SERVICE_URLS=http://chunking-1:8004,http://chunking-2:8004
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - rag-network
+    depends_on:
+      - vectorial-db
+      - chunking-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/app.html:/usr/share/nginx/html/app.html:ro
+    networks:
+      - rag-network
+    depends_on:
+      - upload
+      - chunk-config
+      - rag-query
+
+networks:
+  rag-network:
+    driver: bridge

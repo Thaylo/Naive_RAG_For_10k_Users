@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naive RAG System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        input[type="file"], 
+        input[type="number"], 
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            white-space: pre-wrap;
+        }
+        .error {
+            border-left-color: #f44336;
+            background-color: #ffebee;
+        }
+        .loading {
+            display: none;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Naive RAG System - 10k Users</h1>
+        
+        <div class="section">
+            <h2>1. Configure Chunking Parameters</h2>
+            <label>Chunk Size:</label>
+            <input type="number" id="chunkSize" value="1000" min="100">
+            <label>Overlap Percentage:</label>
+            <input type="number" id="overlapPercentage" value="0.1" min="0" max="1" step="0.1">
+            <button onclick="updateChunkConfig()">Update Configuration</button>
+            <div id="configResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>2. Upload PDF Files</h2>
+            <input type="file" id="pdfFiles" multiple accept=".pdf">
+            <button onclick="uploadFiles()">Upload Files</button>
+            <div id="uploadLoading" class="loading">Uploading files...</div>
+            <div id="uploadResponse" class="response" style="display:none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. Query the System</h2>
+            <textarea id="queryText" rows="4" placeholder="Enter your question here..."></textarea>
+            <button onclick="queryRAG()">Submit Query</button>
+            <div id="queryLoading" class="loading">Processing query...</div>
+            <div id="queryResponse" class="response" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+
+        async function updateChunkConfig() {
+            const chunkSize = parseInt(document.getElementById('chunkSize').value);
+            const overlapPercentage = parseFloat(document.getElementById('overlapPercentage').value);
+            
+            try {
+                const response = await fetch(`${API_BASE}/chunk-config/config`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chunk_size: chunkSize,
+                        overlap_percentage: overlapPercentage
+                    })
+                });
+                
+                const data = await response.json();
+                showResponse('configResponse', JSON.stringify(data, null, 2), response.ok);
+            } catch (error) {
+                showResponse('configResponse', `Error: ${error.message}`, false);
+            }
+        }
+
+        async function uploadFiles() {
+            const fileInput = document.getElementById('pdfFiles');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                showResponse('uploadResponse', 'Please select at least one PDF file', false);
+                return;
+            }
+            
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('files', file);
+            }
+            
+            document.getElementById('uploadLoading').style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/upload/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                showResponse('uploadResponse', JSON.stringify(data, null, 2), response.ok);
+            } catch (error) {
+                showResponse('uploadResponse', `Error: ${error.message}`, false);
+            } finally {
+                document.getElementById('uploadLoading').style.display = 'none';
+            }
+        }
+
+        async function queryRAG() {
+            const queryText = document.getElementById('queryText').value.trim();
+            
+            if (!queryText) {
+                showResponse('queryResponse', 'Please enter a question', false);
+                return;
+            }
+            
+            document.getElementById('queryLoading').style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/rag/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: queryText })
+                });
+                
+                const data = await response.json();
+                showResponse('queryResponse', JSON.stringify(data, null, 2), response.ok);
+            } catch (error) {
+                showResponse('queryResponse', `Error: ${error.message}`, false);
+            } finally {
+                document.getElementById('queryLoading').style.display = 'none';
+            }
+        }
+
+        function showResponse(elementId, message, success = true) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.style.display = 'block';
+            element.className = success ? 'response' : 'response error';
+        }
+    </script>
+</body>
+</html>
